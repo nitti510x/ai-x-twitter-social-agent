@@ -186,7 +186,7 @@ async def post_to_twitter(tweet_text: str) -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error posting to Twitter: {str(e)}")
 
-@app.post("/process-news")
+@app.post("/process-post")
 async def process_news():
     # Prepare the news API request
     news_api_url = "https://ai-marketing-researcher.onrender.com/fetch-news"
