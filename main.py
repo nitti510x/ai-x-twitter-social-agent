@@ -16,6 +16,37 @@ app = FastAPI()
 # Twitter API v2 endpoint
 TWITTER_API_URL = "https://api.twitter.com/2/tweets"
 
+# Common tech keywords for hashtag generation
+TECH_KEYWORDS = {
+    'ai': '#AI',
+    'artificial intelligence': '#AI',
+    'machine learning': '#ML',
+    'deep learning': '#DeepLearning',
+    'neural network': '#NeuralNetworks',
+    'data science': '#DataScience',
+    'blockchain': '#Blockchain',
+    'crypto': '#Crypto',
+    'cryptocurrency': '#Crypto',
+    'bitcoin': '#Bitcoin',
+    'ethereum': '#Ethereum',
+    'web3': '#Web3',
+    'metaverse': '#Metaverse',
+    'virtual reality': '#VR',
+    'augmented reality': '#AR',
+    'robotics': '#Robotics',
+    'automation': '#Automation',
+    'cloud': '#Cloud',
+    'cybersecurity': '#Cybersecurity',
+    'nvidia': '#Nvidia',
+    'openai': '#OpenAI',
+    'microsoft': '#Microsoft',
+    'google': '#Google',
+    'apple': '#Apple',
+    'tesla': '#Tesla',
+    'startup': '#Startup',
+    'tech': '#Tech'
+}
+
 class NewsRequest(BaseModel):
     q: str
     from_date: str
@@ -32,39 +63,96 @@ class NewsResponse(BaseModel):
     publishedAt: str
 
 def clean_text(text: str) -> str:
-    # Remove special characters and extra spaces
-    text = re.sub(r'[^\w\s#@]', ' ', text)
+    """Clean and normalize text."""
+    # Remove special characters except periods and basic punctuation
+    text = re.sub(r'[^\w\s.!?,]', ' ', text)
+    # Normalize whitespace
     text = re.sub(r'\s+', ' ', text).strip()
+    # Remove multiple periods
+    text = re.sub(r'\.{2,}', '.', text)
     return text
+
+def get_first_sentence(text: str) -> str:
+    """Extract the first sentence from text."""
+    # Simple sentence splitting on common endings
+    for end in ['. ', '! ', '? ']:
+        if end in text:
+            return text.split(end)[0] + end.strip()
+    return text
+
+def find_hashtags(text: str) -> list[str]:
+    """Find relevant hashtags based on text content."""
+    hashtags = set()
+    text_lower = text.lower()
+    
+    # Check for tech keywords
+    for keyword, hashtag in TECH_KEYWORDS.items():
+        if keyword in text_lower:
+            hashtags.add(hashtag)
+    
+    # Get words that might be good hashtags (longer than 3 letters)
+    words = [word for word in text_lower.split() if len(word) > 3]
+    for word in words:
+        # Remove any non-letter characters
+        word = re.sub(r'[^a-z]', '', word)
+        if word and word not in TECH_KEYWORDS and len(word) > 3:
+            hashtag = '#' + word.capitalize()
+            hashtags.add(hashtag)
+    
+    # Limit to top 4 most relevant hashtags
+    return list(hashtags)[:4]
+
+def create_summary(title: str, description: str, max_length: int = 180) -> str:
+    """Create a concise summary from title and description."""
+    # Clean the texts
+    clean_title = clean_text(title)
+    clean_desc = clean_text(description)
+    
+    # Get the first sentence of the description
+    first_desc_sentence = get_first_sentence(clean_desc)
+    
+    # If title ends with period, remove it for better flow
+    if clean_title.endswith('.'):
+        clean_title = clean_title[:-1]
+    
+    # Create summary variants and choose the best one
+    variants = [
+        f"{clean_title}: {first_desc_sentence}",
+        f"{clean_title}",
+        f"{first_desc_sentence}"
+    ]
+    
+    # Choose the longest variant that fits within max_length
+    for variant in variants:
+        if len(variant) <= max_length:
+            return variant
+    
+    # If no variant fits, truncate the first one
+    return variants[0][:max_length-3] + "..."
 
 async def generate_twitter_summary(article_url: str, title: str, description: str) -> str:
     try:
-        # Clean the title and description
-        clean_title = clean_text(title)
+        # Create main summary
+        main_summary = create_summary(title, description)
         
-        # Extract relevant hashtags
-        hashtags = []
-        if 'AI' in title or 'ai' in title:
-            hashtags.append('#AI')
-        if 'tech' in title.lower():
-            hashtags.append('#Tech')
-        if 'nvidia' in title.lower():
-            hashtags.append('#Nvidia')
+        # Find relevant hashtags
+        hashtags = find_hashtags(title + " " + description)
         
-        # Create a summary that includes the title and hashtags
-        summary = f"{clean_title}"
+        # Combine components
+        components = [
+            main_summary,
+            article_url,
+            " ".join(hashtags)
+        ]
         
-        # Add URL
-        summary += f"\n{article_url}"
-        
-        # Add hashtags
-        if hashtags:
-            summary += f"\n{' '.join(hashtags)}"
-        
-        # Ensure the summary is under 280 characters
+        # Join components and ensure total length is under 280 characters
+        summary = "\n\n".join(components)
         if len(summary) > 280:
-            summary = summary[:277] + "..."
-            
+            # If too long, shorten the main summary
+            excess = len(summary) - 280 + 3  # +3 for ellipsis
+            main_summary = main_summary[:-excess] + "..."
+            summary = "\n\n".join([main_summary, article_url, " ".join(hashtags)])
+        
         return summary
         
     except Exception as e:
