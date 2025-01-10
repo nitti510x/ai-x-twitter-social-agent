@@ -11,7 +11,13 @@ from requests_oauthlib import OAuth1Session
 load_dotenv()
 
 # Initialize FastAPI app
-app = FastAPI()
+app = FastAPI(
+    title="AI Twitter Social Agent",
+    description="An API that processes news articles and posts them to Twitter with relevant hashtags",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # Twitter API v2 endpoint
 TWITTER_API_URL = "https://api.twitter.com/2/tweets"
@@ -61,6 +67,18 @@ class NewsResponse(BaseModel):
     url: str
     urlToImage: Optional[str]
     publishedAt: str
+
+class TwitterResponse(BaseModel):
+    tweet_id: str
+    tweet_url: str
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "tweet_id": "1234567890",
+                "tweet_url": "https://twitter.com/i/web/status/1234567890"
+            }
+        }
 
 def clean_text(text: str) -> str:
     """Clean and normalize text."""
@@ -186,7 +204,14 @@ async def post_to_twitter(tweet_text: str) -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error posting to Twitter: {str(e)}")
 
-@app.post("/process-post")
+@app.post(
+    "/process-post",
+    response_model=TwitterResponse,
+    summary="Process news and post to Twitter",
+    description="Fetches news about AI agents, generates a summary with relevant hashtags, and posts it to Twitter",
+    response_description="Returns the tweet ID and URL of the posted tweet",
+    tags=["Twitter"]
+)
 async def process_news():
     # Prepare the news API request
     news_api_url = "https://ai-marketing-researcher.onrender.com/fetch-news"
