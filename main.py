@@ -246,20 +246,18 @@ async def process_news(request: PostRequest):
             response = await client.post(news_api_url, json=news_payload)
             response.raise_for_status()
             news_data = response.json()
+            logger.info(f"News API response: {news_data}")
 
-        if not news_data or "articles" not in news_data or not news_data["articles"]:
-            logger.error("No articles found in the response")
+        # The API returns a single article directly, not an array
+        if not news_data or not news_data.get("title"):
+            logger.error("No article found in the response")
             raise HTTPException(status_code=404, detail="No news articles found for the given query")
 
-        # Get the first article
-        article = news_data["articles"][0]
-        logger.info(f"Processing article: {article.get('title', 'No title')}")
-
-        # Generate Twitter summary
+        # Generate Twitter summary using the article data directly
         tweet_text = await generate_twitter_summary(
-            article["url"],
-            article["title"],
-            article["description"]
+            news_data["url"],
+            news_data["title"],
+            news_data["description"]
         )
         logger.info(f"Generated tweet text: {tweet_text}")
 
