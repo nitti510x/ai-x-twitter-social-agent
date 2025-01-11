@@ -6,9 +6,14 @@ from dotenv import load_dotenv
 from typing import Optional
 import re
 from requests_oauthlib import OAuth1Session
+import logging
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -223,43 +228,53 @@ async def post_to_twitter(tweet_text: str) -> dict:
     tags=["Twitter"]
 )
 async def process_news(request: PostRequest):
-    # Prepare the news API request
-    news_api_url = "https://ai-marketing-researcher.onrender.com/fetch-news"
-    news_payload = {
-        "q": request.q,
-        "from": "2024-12-12",
-        "sortBy": "popularity",
-        "searchIn": "title,description",
-        "language": "en"
-    }
-
     try:
-        # Make request to news API
+        logger.info(f"Processing news request with query: {request.q}")
+        
+        # Prepare the news API request
+        news_api_url = "https://ai-marketing-researcher.onrender.com/fetch-news"
+        news_payload = {
+            "q": request.q,
+            "from": "2024-12-12",
+            "sortBy": "popularity",
+            "searchIn": "title,description",
+            "language": "en"
+        }
+
+        logger.info(f"Sending request to news API: {news_api_url}")
         async with httpx.AsyncClient() as client:
             response = await client.post(news_api_url, json=news_payload)
             response.raise_for_status()
             news_data = response.json()
 
-            # Generate Twitter summary
-            twitter_summary = await generate_twitter_summary(
-                news_data["url"],
-                news_data["title"],
-                news_data["description"]
-            )
+        if not news_data or "articles" not in news_data or not news_data["articles"]:
+            logger.error("No articles found in the response")
+            raise HTTPException(status_code=404, detail="No news articles found for the given query")
 
-            # Post to Twitter
-            tweet_result = await post_to_twitter(twitter_summary)
+        # Get the first article
+        article = news_data["articles"][0]
+        logger.info(f"Processing article: {article.get('title', 'No title')}")
 
-            return {
-                "news_article": news_data,
-                "twitter_summary": twitter_summary,
-                "tweet_details": tweet_result
-            }
+        # Generate Twitter summary
+        tweet_text = await generate_twitter_summary(
+            article["url"],
+            article["title"],
+            article["description"]
+        )
+        logger.info(f"Generated tweet text: {tweet_text}")
 
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching news: {str(e)}")
+        # Post to Twitter
+        result = await post_to_twitter(tweet_text)
+        logger.info(f"Successfully posted to Twitter: {result}")
+        
+        return result
+
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP error occurred: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Error fetching news: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
