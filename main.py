@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import httpx
 import os
 from dotenv import load_dotenv
@@ -67,6 +67,16 @@ class NewsResponse(BaseModel):
     url: str
     urlToImage: Optional[str]
     publishedAt: str
+
+class PostRequest(BaseModel):
+    q: str = Field(..., description="Search query for news articles", example="artificial intelligence")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "q": "artificial intelligence"
+            }
+        }
 
 class TwitterResponse(BaseModel):
     tweet_id: str
@@ -208,15 +218,15 @@ async def post_to_twitter(tweet_text: str) -> dict:
     "/process-post",
     response_model=TwitterResponse,
     summary="Process news and post to Twitter",
-    description="Fetches news about AI agents, generates a summary with relevant hashtags, and posts it to Twitter",
+    description="Fetches news based on the provided query, generates a summary with relevant hashtags, and posts it to Twitter",
     response_description="Returns the tweet ID and URL of the posted tweet",
     tags=["Twitter"]
 )
-async def process_news():
+async def process_news(request: PostRequest):
     # Prepare the news API request
     news_api_url = "https://ai-marketing-researcher.onrender.com/fetch-news"
     news_payload = {
-        "q": "ai agents",
+        "q": request.q,
         "from": "2024-12-12",
         "sortBy": "popularity",
         "searchIn": "title,description",
