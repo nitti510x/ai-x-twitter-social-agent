@@ -1,12 +1,14 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 import httpx
 import os
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, List
 import re
 from requests_oauthlib import OAuth1Session
 import logging
+from sqlalchemy.orm import Session
+from models import get_db, PendingPost, PendingPostResponse, PostApproval
 
 # Load environment variables
 load_dotenv()
@@ -95,6 +97,19 @@ class TwitterResponse(BaseModel):
             }
         }
 
+class PendingPostResponse(BaseModel):
+    id: int
+    tweet_text: str
+    article_url: str
+    status: str
+    posted_tweet_id: Optional[str]
+
+    class Config:
+        orm_mode = True
+
+class PostApproval(BaseModel):
+    approved: bool
+
 def clean_text(text: str) -> str:
     """Clean and normalize text."""
     # Remove special characters except periods and basic punctuation
@@ -163,7 +178,7 @@ def create_summary(title: str, description: str, max_length: int = 180) -> str:
     # If no variant fits, truncate the first one
     return variants[0][:max_length-3] + "..."
 
-async def generate_twitter_summary(article_url: str, title: str, description: str) -> str:
+def generate_twitter_summary(article_url: str, title: str, description: str) -> str:
     try:
         # Create main summary
         main_summary = create_summary(title, description)
@@ -219,60 +234,91 @@ async def post_to_twitter(tweet_text: str) -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error posting to Twitter: {str(e)}")
 
-@app.post(
-    "/process-post",
-    response_model=TwitterResponse,
-    summary="Process news and post to Twitter",
-    description="Fetches news based on the provided query, generates a summary with relevant hashtags, and posts it to Twitter",
-    response_description="Returns the tweet ID and URL of the posted tweet",
-    tags=["Twitter"]
-)
-async def process_news(request: PostRequest):
+@app.post("/generate", response_model=PendingPostResponse)
+async def process_news(request: PostRequest, db: Session = Depends(get_db)):
+    """Generate a tweet for approval based on news search."""
     try:
-        logger.info(f"Processing news request with query: {request.q}")
-        
-        # Prepare the news API request
-        news_api_url = "https://ai-marketing-researcher.onrender.com/fetch-news"
-        news_payload = {
-            "q": request.q,
-            "from": "2024-12-12",
-            "sortBy": "popularity",
-            "searchIn": "title,description",
-            "language": "en"
-        }
-
-        logger.info(f"Sending request to news API: {news_api_url}")
-        async with httpx.AsyncClient() as client:
-            response = await client.post(news_api_url, json=news_payload)
-            response.raise_for_status()
-            news_data = response.json()
-            logger.info(f"News API response: {news_data}")
-
-        # The API returns a single article directly, not an array
-        if not news_data or not news_data.get("title"):
-            logger.error("No article found in the response")
-            raise HTTPException(status_code=404, detail="No news articles found for the given query")
-
-        # Generate Twitter summary using the article data directly
-        tweet_text = await generate_twitter_summary(
-            news_data["url"],
-            news_data["title"],
-            news_data["description"]
+        # Search for news articles
+        news_request = NewsRequest(
+            q=request.q,
+            from_date="2024-01-01",  # You might want to make this configurable
+            sortBy="relevancy",
+            searchIn="title,description",
+            language="en"
         )
-        logger.info(f"Generated tweet text: {tweet_text}")
-
-        # Post to Twitter
-        result = await post_to_twitter(tweet_text)
-        logger.info(f"Successfully posted to Twitter: {result}")
         
-        return result
-
-    except httpx.HTTPError as e:
-        logger.error(f"HTTP error occurred: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Error fetching news: {str(e)}")
+        async with httpx.AsyncClient() as client:
+            news_api_key = os.getenv("NEWS_API_KEY")
+            if not news_api_key:
+                raise HTTPException(status_code=500, detail="NEWS_API_KEY not configured")
+            
+            response = await client.get(
+                "https://newsapi.org/v2/everything",
+                params={
+                    "q": news_request.q,
+                    "from": news_request.from_date,
+                    "sortBy": news_request.sortBy,
+                    "searchIn": news_request.searchIn,
+                    "language": news_request.language,
+                    "apiKey": news_api_key
+                }
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="News API request failed")
+            
+            data = response.json()
+            if not data.get("articles"):
+                raise HTTPException(status_code=404, detail="No articles found")
+            
+            article = data["articles"][0]
+            tweet_text = generate_twitter_summary(
+                article["url"],
+                article["title"],
+                article.get("description", "")
+            )
+            
+            # Create pending post in database
+            pending_post = PendingPost(
+                tweet_text=tweet_text,
+                article_url=article["url"]
+            )
+            db.add(pending_post)
+            db.commit()
+            db.refresh(pending_post)
+            
+            return pending_post
+            
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logger.error(f"Error processing news: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/pending", response_model=List[PendingPostResponse])
+async def get_pending_posts(db: Session = Depends(get_db)):
+    """Get all pending posts."""
+    return db.query(PendingPost).filter(PendingPost.status == "pending").all()
+
+@app.post("/approve/{post_id}", response_model=PendingPostResponse)
+async def approve_post(post_id: int, approval: PostApproval, db: Session = Depends(get_db)):
+    """Approve or reject a pending post."""
+    post = db.query(PendingPost).filter(PendingPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    if post.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Post is already {post.status}")
+    
+    if approval.approved:
+        # Post to Twitter
+        tweet_response = post_to_twitter(post.tweet_text)
+        post.posted_tweet_id = tweet_response["tweet_id"]
+        post.status = "approved"
+    else:
+        post.status = "rejected"
+    
+    db.commit()
+    db.refresh(post)
+    return post
 
 if __name__ == "__main__":
     import uvicorn
