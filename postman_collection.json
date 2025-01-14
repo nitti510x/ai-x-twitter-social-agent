@@ -6,7 +6,7 @@
 	},
 	"item": [
 		{
-			"name": "Process Post",
+			"name": "Direct Post to Twitter",
 			"request": {
 				"method": "POST",
 				"header": [
@@ -17,20 +17,96 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"q\": \"artificial intelligence\"\n}"
+					"raw": "{\n    \"q\": \"ai agents\",\n    \"from\": \"2025-01-10\",\n    \"sortBy\": \"popularity\",\n    \"searchIn\": \"title,description\",\n    \"language\": \"en\"\n}"
 				},
 				"url": {
-					"raw": "http://localhost:8000/process-post",
+					"raw": "http://localhost:8001/post-direct",
 					"protocol": "http",
 					"host": [
 						"localhost"
 					],
-					"port": "8000",
+					"port": "8001",
 					"path": [
-						"process-post"
+						"post-direct"
 					]
 				},
-				"description": "Endpoint to process news and post to Twitter. Accepts a query parameter 'q' to search for specific news articles."
+				"description": "Directly post to Twitter without approval workflow"
+			}
+		},
+		{
+			"name": "Generate Pending Post",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"q\": \"ai agents\",\n    \"from\": \"2025-01-10\",\n    \"sortBy\": \"popularity\",\n    \"searchIn\": \"title,description\",\n    \"language\": \"en\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8001/generate",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8001",
+					"path": [
+						"generate"
+					]
+				},
+				"description": "Generate a tweet and save it as a pending post"
+			}
+		},
+		{
+			"name": "Get Pending Posts",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8001/pending",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8001",
+					"path": [
+						"pending"
+					]
+				},
+				"description": "Get all pending posts"
+			}
+		},
+		{
+			"name": "Approve Post",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"approved\": true,\n    \"feedback\": \"Looks good!\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8001/approve/1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8001",
+					"path": [
+						"approve",
+						"1"
+					]
+				},
+				"description": "Approve or reject a pending post. Replace '1' in the URL with the actual post ID."
 			}
 		}
 	]

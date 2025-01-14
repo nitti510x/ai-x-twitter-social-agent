@@ -216,32 +216,56 @@ def generate_twitter_summary(article_url: str, title: str, description: str) -> 
         raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
 
 async def post_to_twitter(tweet_text: str) -> dict:
+    """Post a tweet to Twitter."""
     try:
+        # Get Twitter credentials from environment
+        api_key = os.getenv("TWITTER_API_KEY")
+        api_secret = os.getenv("TWITTER_API_SECRET")
+        access_token = os.getenv("TWITTER_ACCESS_TOKEN")
+        access_token_secret = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+
+        if not all([api_key, api_secret, access_token, access_token_secret]):
+            raise HTTPException(
+                status_code=500,
+                detail="Twitter credentials not properly configured"
+            )
+
         # Create OAuth1 session
-        twitter = OAuth1Session(
-            client_key=os.getenv("TWITTER_API_KEY"),
-            client_secret=os.getenv("TWITTER_API_SECRET"),
-            resource_owner_key=os.getenv("TWITTER_ACCESS_TOKEN"),
-            resource_owner_secret=os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+        oauth = OAuth1Session(
+            api_key,
+            client_secret=api_secret,
+            resource_owner_key=access_token,
+            resource_owner_secret=access_token_secret
         )
-        
-        # Prepare tweet data
-        data = {
-            "text": tweet_text
-        }
-        
-        # Post to Twitter API v2
-        response = twitter.post(TWITTER_API_URL, json=data)
-        response.raise_for_status()
-        tweet_data = response.json()
-        tweet_id = tweet_data['data']['id']
-        
+
+        # Create tweet payload
+        payload = {"text": tweet_text}
+
+        # Post to Twitter
+        response = oauth.post(
+            TWITTER_API_URL,
+            json=payload
+        )
+
+        if response.status_code != 201:
+            logger.error(f"Twitter API error: {response.text}")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error posting to Twitter: {response.text}"
+            )
+
+        data = response.json()
+        tweet_id = data["data"]["id"]
+        tweet_url = f"https://twitter.com/i/web/status/{tweet_id}"
+
         return {
             "tweet_id": tweet_id,
-            "tweet_url": f"https://twitter.com/i/web/status/{tweet_id}"
+            "tweet_url": tweet_url
         }
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error posting to Twitter: {str(e)}")
+        logger.error(f"Error posting to Twitter: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate", response_model=PendingPostResponse)
 async def process_news(request: PostRequest, db: Session = Depends(get_db)):
@@ -307,7 +331,7 @@ async def approve_post(post_id: int, approval: PostApproval, db: Session = Depen
     
     if approval.approved:
         # Post to Twitter
-        tweet_response = post_to_twitter(post.tweet_text)
+        tweet_response = await post_to_twitter(post.tweet_text)
         post.posted_tweet_id = tweet_response["tweet_id"]
         post.status = "approved"
     else:
