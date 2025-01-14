@@ -76,14 +76,23 @@ class NewsResponse(BaseModel):
     publishedAt: str
 
 class PostRequest(BaseModel):
-    q: str = Field(..., description="Search query for news articles", example="artificial intelligence")
+    q: str = Field(..., description="Search query for news articles")
+    from_: str = Field(..., alias="from", description="Start date for news search", example="2025-01-10")
+    sortBy: str = Field("popularity", description="Sort order for news articles")
+    searchIn: str = Field("title,description", description="Where to search for the query")
+    language: str = Field("en", description="Language of news articles")
 
     class Config:
         schema_extra = {
             "example": {
-                "q": "artificial intelligence"
+                "q": "ai agents",
+                "from": "2025-01-10",
+                "sortBy": "popularity",
+                "searchIn": "title,description",
+                "language": "en"
             }
         }
+        allow_population_by_field_name = True
 
 class TwitterResponse(BaseModel):
     tweet_id: str
@@ -238,30 +247,18 @@ async def post_to_twitter(tweet_text: str) -> dict:
 async def process_news(request: PostRequest, db: Session = Depends(get_db)):
     """Generate a tweet for approval based on news search."""
     try:
-        # Search for news articles
-        news_request = NewsRequest(
-            q=request.q,
-            from_date="2024-01-01",  # You might want to make this configurable
-            sortBy="relevancy",
-            searchIn="title,description",
-            language="en"
-        )
-        
         async with httpx.AsyncClient() as client:
             news_api_key = os.getenv("NEWS_API_KEY")
             if not news_api_key:
                 raise HTTPException(status_code=500, detail="NEWS_API_KEY not configured")
             
+            # Convert the request model to dict and handle the "from" field
+            params = request.model_dump(by_alias=True)
+            params["apiKey"] = news_api_key
+            
             response = await client.get(
                 "https://newsapi.org/v2/everything",
-                params={
-                    "q": news_request.q,
-                    "from": news_request.from_date,
-                    "sortBy": news_request.sortBy,
-                    "searchIn": news_request.searchIn,
-                    "language": news_request.language,
-                    "apiKey": news_api_key
-                }
+                params=params
             )
             
             if response.status_code != 200:
@@ -324,30 +321,18 @@ async def approve_post(post_id: int, approval: PostApproval, db: Session = Depen
 async def post_direct(request: PostRequest):
     """Directly post to Twitter without approval workflow."""
     try:
-        # Search for news articles
-        news_request = NewsRequest(
-            q=request.q,
-            from_date="2024-01-01",
-            sortBy="relevancy",
-            searchIn="title,description",
-            language="en"
-        )
-        
         async with httpx.AsyncClient() as client:
             news_api_key = os.getenv("NEWS_API_KEY")
             if not news_api_key:
                 raise HTTPException(status_code=500, detail="NEWS_API_KEY not configured")
             
+            # Convert the request model to dict and handle the "from" field
+            params = request.model_dump(by_alias=True)
+            params["apiKey"] = news_api_key
+            
             response = await client.get(
                 "https://newsapi.org/v2/everything",
-                params={
-                    "q": news_request.q,
-                    "from": news_request.from_date,
-                    "sortBy": news_request.sortBy,
-                    "searchIn": news_request.searchIn,
-                    "language": news_request.language,
-                    "apiKey": news_api_key
-                }
+                params=params
             )
             
             if response.status_code != 200:
