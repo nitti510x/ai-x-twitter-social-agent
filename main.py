@@ -286,7 +286,9 @@ async def process_news(request: PostRequest, db: Session = Depends(get_db)):
             )
             
             if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="News API request failed")
+                error_data = response.json()
+                error_message = error_data.get('message', 'News API request failed')
+                raise HTTPException(status_code=response.status_code, detail=error_message)
             
             data = response.json()
             if not data.get("articles"):
@@ -299,19 +301,23 @@ async def process_news(request: PostRequest, db: Session = Depends(get_db)):
                 article.get("description", "")
             )
             
-            # Create pending post in database
+            # Create pending post in database without echoing
             pending_post = PendingPost(
                 tweet_text=tweet_text,
-                article_url=article["url"]
+                article_url=article["url"],
+                status="pending"  # Explicitly set status
             )
             db.add(pending_post)
             db.commit()
             db.refresh(pending_post)
             
+            # Return without additional echo
             return pending_post
             
     except Exception as e:
         logger.error(f"Error processing news: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/pending", response_model=List[PendingPostResponse])
@@ -329,17 +335,24 @@ async def approve_post(post_id: int, approval: PostApproval, db: Session = Depen
     if post.status != "pending":
         raise HTTPException(status_code=400, detail=f"Post is already {post.status}")
     
-    if approval.approved:
-        # Post to Twitter
-        tweet_response = await post_to_twitter(post.tweet_text)
-        post.posted_tweet_id = tweet_response["tweet_id"]
-        post.status = "approved"
-    else:
-        post.status = "rejected"
-    
-    db.commit()
-    db.refresh(post)
-    return post
+    try:
+        if approval.approved:
+            # Post to Twitter without echoing
+            tweet_response = await post_to_twitter(post.tweet_text)
+            post.posted_tweet_id = tweet_response["tweet_id"]
+            post.status = "approved"
+        else:
+            post.status = "rejected"
+        
+        db.commit()
+        db.refresh(post)
+        return post
+        
+    except Exception as e:
+        logger.error(f"Error in approve_post: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/post-direct", response_model=TwitterResponse)
 async def post_direct(request: PostRequest):
