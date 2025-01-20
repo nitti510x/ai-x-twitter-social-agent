@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 import logging
 from typing import List
 
-from .models import get_db, PendingPost
-from .schemas import (
+from models import get_db, PendingPost
+from schemas import (
     PostRequest,
     TwitterResponse,
     PendingPostResponse,
@@ -13,8 +13,8 @@ from .schemas import (
     NewsRequest,
     NewsResponse
 )
-from .services.news_service import fetch_news, process_article
-from .services.twitter_service import post_to_twitter
+from services.news_service import fetch_news, process_article
+from services.twitter_service import post_to_twitter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
