@@ -32,14 +32,28 @@ async def process_news(request: PostRequest, db: Session = Depends(get_db)):
             language=request.language
         )
         
+        logger.info(f"Processing news request: {news_request}")
+        
         # Fetch news articles
         articles = await fetch_news(news_request)
         if not articles:
-            raise HTTPException(status_code=404, detail="No news articles found")
+            logger.error("No articles returned from News API")
+            raise HTTPException(
+                status_code=404,
+                detail="No news articles found matching your criteria"
+            )
         
         # Process the first article
         article = articles[0]
+        logger.info(f"Processing article: {article.title}")
+        
         tweet_text = process_article(article)
+        if not tweet_text:
+            logger.error("Failed to generate tweet text")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate tweet text from article"
+            )
         
         # Create pending post
         db_post = PendingPost(
@@ -50,11 +64,17 @@ async def process_news(request: PostRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_post)
         
+        logger.info(f"Created pending post: {db_post.id}")
         return db_post
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error processing news: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in process_news: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process news request: {str(e)}"
+        )
 
 @router.get("/pending-posts", response_model=List[PendingPostResponse])
 def get_pending_posts(db: Session = Depends(get_db)):
@@ -68,28 +88,28 @@ def approve_post(post_id: int, approval: PostApproval, db: Session = Depends(get
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    if post.status != "pending":
-        raise HTTPException(status_code=400, detail=f"Post is already {post.status}")
-    
-    if approval.approved:
-        try:
-            # Post to Twitter
-            tweet_id, tweet_url = post_to_twitter(post.tweet_text)
-            
-            # Update post status
-            post.status = "approved"
-            post.posted_tweet_id = tweet_id
-            db.commit()
-            
-            return TwitterResponse(tweet_id=tweet_id, tweet_url=tweet_url)
-        except Exception as e:
-            logger.error(f"Error posting to Twitter: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-    else:
-        # Mark as rejected
+    if not approval.approved:
         post.status = "rejected"
         db.commit()
-        raise HTTPException(status_code=400, detail="Post rejected")
+        return {"tweet_id": "", "tweet_url": ""}
+    
+    try:
+        # Post to Twitter
+        tweet_response = post_to_twitter(post.tweet_text)
+        
+        # Update post status
+        post.status = "posted"
+        post.posted_tweet_id = tweet_response.tweet_id
+        db.commit()
+        
+        return tweet_response
+        
+    except Exception as e:
+        logger.error(f"Error posting to Twitter: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to post to Twitter: {str(e)}"
+        )
 
 @router.post("/post-direct", response_model=TwitterResponse)
 async def post_direct(request: PostRequest):
@@ -112,11 +132,14 @@ async def post_direct(request: PostRequest):
         article = articles[0]
         tweet_text = process_article(article)
         
-        # Post to Twitter
-        tweet_id, tweet_url = post_to_twitter(tweet_text)
+        # Post directly to Twitter
+        return post_to_twitter(tweet_text)
         
-        return TwitterResponse(tweet_id=tweet_id, tweet_url=tweet_url)
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in direct post: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to post directly: {str(e)}"
+        )

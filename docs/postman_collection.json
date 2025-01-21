@@ -1,113 +1,114 @@
 {
-	"info": {
-		"_postman_id": "b8f3e8a0-5f5d-4b3a-9f5a-8f5e8f5e8f5e",
-		"name": "AI Twitter Social Agent",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"item": [
-		{
-			"name": "Direct Post to Twitter",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"q\": \"ai agents\",\n    \"from\": \"2025-01-10\",\n    \"sortBy\": \"popularity\",\n    \"searchIn\": \"title,description\",\n    \"language\": \"en\"\n}"
-				},
-				"url": {
-					"raw": "http://localhost:8001/post-direct",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "8001",
-					"path": [
-						"post-direct"
-					]
-				},
-				"description": "Directly post to Twitter without approval workflow"
-			}
-		},
-		{
-			"name": "Generate Pending Post",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"q\": \"ai agents\",\n    \"from\": \"2025-01-10\",\n    \"sortBy\": \"popularity\",\n    \"searchIn\": \"title,description\",\n    \"language\": \"en\"\n}"
-				},
-				"url": {
-					"raw": "http://localhost:8001/generate",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "8001",
-					"path": [
-						"generate"
-					]
-				},
-				"description": "Generate a tweet and save it as a pending post"
-			}
-		},
-		{
-			"name": "Get Pending Posts",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "http://localhost:8001/pending",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "8001",
-					"path": [
-						"pending"
-					]
-				},
-				"description": "Get all pending posts"
-			}
-		},
-		{
-			"name": "Approve Post",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"approved\": true,\n    \"feedback\": \"Looks good!\"\n}"
-				},
-				"url": {
-					"raw": "http://localhost:8001/approve/1",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "8001",
-					"path": [
-						"approve",
-						"1"
-					]
-				},
-				"description": "Approve or reject a pending post. Replace '1' in the URL with the actual post ID."
-			}
-		}
-	]
+    "info": {
+        "_postman_id": "b8f3e8a0-5f5d-4b3a-9f5a-8f5e8f5e8f5e",
+        "name": "AI Twitter Social Agent",
+        "description": "API endpoints for the AI Twitter Social Agent",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Process News (Create Pending Post)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"q\": \"artificial intelligence news\",\n    \"from\": \"2025-01-20\",\n    \"sortBy\": \"popularity\",\n    \"searchIn\": \"title,description\",\n    \"language\": \"en\"\n}"
+                },
+                "url": {
+                    "raw": "http://localhost:8000/process-news",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "process-news"
+                    ]
+                },
+                "description": "Generate a tweet from news and save it as a pending post"
+            }
+        },
+        {
+            "name": "Get Pending Posts",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "http://localhost:8000/pending-posts",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "pending-posts"
+                    ]
+                },
+                "description": "Get all pending posts"
+            }
+        },
+        {
+            "name": "Approve Post",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"approved\": true,\n    \"feedback\": \"Looks good!\"\n}"
+                },
+                "url": {
+                    "raw": "http://localhost:8000/approve-post/1",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "approve-post",
+                        "1"
+                    ]
+                },
+                "description": "Approve or reject a pending post. Replace '1' with the actual post ID."
+            }
+        },
+        {
+            "name": "Direct Post to Twitter",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"q\": \"artificial intelligence news\",\n    \"from\": \"2025-01-20\",\n    \"sortBy\": \"popularity\",\n    \"searchIn\": \"title,description\",\n    \"language\": \"en\"\n}"
+                },
+                "url": {
+                    "raw": "http://localhost:8000/post-direct",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "post-direct"
+                    ]
+                },
+                "description": "Directly post to Twitter without approval workflow"
+            }
+        }
+    ]
 }
